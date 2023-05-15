@@ -1,0 +1,675 @@
+\documentclass[12pt,a4paper]{article}
+%\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{mathrsfs}
+\usepackage{amssymb}
+\usepackage{dsfont}
+\usepackage{mathtools}
+\usepackage{graphicx}
+\usepackage[shortlabels]{enumitem}
+\setlist{nosep}
+\usepackage{microtype}
+\usepackage{geometry}
+\usepackage{soul}
+\geometry{
+	a4paper,
+	total={170mm,257mm},
+	left=20mm,
+	top=20mm,
+}
+\usepackage[backend=biber,style=alphabetic,maxbibnames=99,maxalphanames=99]{biblatex}
+\addbibresource{references.bib}
+\usepackage[hidelinks]{hyperref}
+\usepackage{microtype}
+
+\newcommand{\x}{\cdot}
+\newcommand{\poly}{\text{poly}}
+\newcommand{\N}{\mathbb{N}}
+
+\newcommand{\abr}[1]{\left\langle #1 \right\rangle}
+\newcommand*\xor{\oplus}
+\newcommand{\F}{\mathbb{F}}
+\newcommand{\ceil}[1]{\left\lceil #1\right\rceil}
+\newcommand{\floor}[1]{\left\lfloor #1\right\rfloor}
+\newcommand{\bmat}[1]{\begin{bmatrix} #1\end{bmatrix}}
+\newcommand{\pmat}[1]{\begin{pmatrix} #1\end{pmatrix}}
+\newcommand{\norm}[1]{\left|\left|{#1}\right|\right|}
+
+\newcommand{\1}[1]{\mathds{1}\left[#1\right]}
+\newcommand{\R}{\mathbb{R}}
+\renewcommand{\L}{\mathcal{L}}
+\newcommand{\prodin}{\prod_{i=1}^n}
+\newcommand{\sumin}{\sum_{i=1}^n}
+\newcommand{\mle}{_{\text{MLE}}}
+\newcommand{\map}{_{\text{MAP}}}
+\newcommand{\argmax}{\text{arg max}}
+\newcommand{\limninf}{\lim_{n\to \infty}}
+\newcommand{\inv}{^{-1}}
+
+\newcommand{\expp}[1]{^{(#1)}}
+\newcommand{\B}[1]{\mathbf{#1}}
+\newcommand{\C}[1]{\mathscr{#1}}
+\newcommand{\indep}{\perp\!\!\!\perp}
+
+\usepackage{verbatim}
+
+\title{\vspace{4em}\Large \textsc{The}\\\Huge \textbf{Clustering}\\ \Large \textsc{and}\vspace{-0.2em}\\ \Huge \textbf{Dimension-Reduction}\\ \LARGE \textit{Cookbook}}
+\author{\textsc{Anthony Ozerov}}
+\date{\today}
+
+\usepackage{fontawesome5}
+
+\usepackage[parfill]{parskip}
+
+\usepackage{fancyhdr}
+\renewcommand{\footrulewidth}{0.5pt}
+\usepackage{datetime2}
+\DTMsetdatestyle{iso}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+\newpage
+\pagestyle{fancy}
+\setlength{\headheight}{15pt}
+\fancyhead[L]{}
+\fancyfoot[L]{\textsc{\date{\today}}}
+\fancyfoot[C]{}
+\fancyfoot[R]{\thepage}
+
+
+\section*{Introduction}
+\paragraph{What is this?}
+This text is intended as a quick reference on various methods in dimension-reduction and clustering, \textbf{not} as an introduction to the subject, or a guide on how to do anything. This text was born out of a lack of a quick reference for clustering and dimension-reduction methods. Of course, there are many texts which discuss some of the methods mentioned here \cite{esl,clusteranalysis,tda,fml}, but we seek to synthesize and condense the information presented further. For each method mentioned, we focus on:
+\begin{itemize}
+    \item What is it doing mathematically?
+    \item How do you do it computationally?
+    \item What are some common pitfalls?
+\end{itemize}
+
+\noindent We hope that our condensed presentation makes the differences and similarities between different methods clear.
+\paragraph{Fair warning} Many techniques are omitted either for the sake of brevity or for lack of author knowledge on the subject.
+
+\paragraph{Contribution} The \texttt{.tex} source for this text is freely available at \url{https://github.com/anthonyozerov/cdr-cookbook} and licensed under \href{https://creativecommons.org/publicdomain/zero/1.0/}{\faCreativeCommons\faCreativeCommonsZero}. We welcome contributions.
+
+\paragraph{Acknowledgements} We thank Peterson \& Pederson's \textsc{The Matrix Cookbook} and Vallentin's \textsc{Probability and Statistics Cookbook} for the inspiration that led us to make this text. We are also grateful to Andrew Blumberg for explaining geometric data analysis so clearly.
+
+\section*{Common Notation}
+Throughout this text, we have sought to strike a balance between having non-overlapping variable names and keeping in line with the literature. Here is a table of the variable names:
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{c|l}
+Symbol & Meaning\\\hline
+$n$ & The number of points in a dataset\\
+$m$ & The number of points in a subset of a dataset\\
+$D$ & The dimension of the data\\
+$d$ & A dimension $<D$\\
+$d(\x)$ & A dissimilarity or distance function\\
+$s(\x)$ & A similarity function\\
+$p$ & The $p$ in $p$-norm\\
+$k$ & The $k$ in $k$-NN or $k$-means (these are different!)\\
+$\epsilon$ & The $\epsilon$ in $\epsilon$-ball or a small positive number\\
+$i$ and $j$ & Index variables\\
+$A$ and $B$ & Generic sets\\
+$X$ and $Y$ & Metric spaces / sets of data points\\
+$P$ and $Q$ & Probability measures on a metric sapce\\
+$C$ & A collection of sets (e.g.~a clustering)\\
+\end{tabular}
+\end{table}
+
+
+\newpage
+\setcounter{tocdepth}{2}
+\tableofcontents
+
+\newpage
+\section{Similarity, Dissimilarity, and Distance}
+\subsection{Definitions}
+For the rest of this text, we will be making use of ideas of similarity, dissimilarity, and distance. We follow the convention of \cite{esl} in our terminology.
+
+A measure of \textbf{similarity} is a function denoting how similar two mathematical objects are. 0 indicates the least possible similarity, and large numbers indicate high similarity.
+
+A measure of \textbf{dissimilarity} does the opposite of a measure of dissimilarity, instead denoting how not-similar two mathematical objects are. 0 indicates the most possible similarity (in some cases, this will only occur when the two objects are equal), and large numbers indicate low similarity.
+
+\textbf{Distance}, as we will use it throughout this text, is a refined notion of dissimilarity referred to as a \textbf{distance metric}. A function $d:X\times X\to \R$ must satisfy the following properties to be a distance metric:
+\begin{enumerate}
+    \item $\forall x\in X\ d(x,x)=0$
+    \item $\forall x\neq y\in X\ d(x,y)>0$ (Positivity/Separation)
+    \item $\forall x,y\in X\ d(x,y)=d(y,x)$ (Symmetry)
+    \item $\forall x,y,z\in X\ d(x,y)\leq d(x,y)+d(y,z)$ (Triangle Inequality)
+\end{enumerate}
+A tuple $(X,d)$ of a set $X$ and a distance metric on $X$ is a \textbf{metric space}. Sometimes a function doesn't seem to be a distance metric until $X$ is very carefully specified. A function that satisfies all properties but positivity is a \textbf{pseudometric}. A function that satisfies all properties but symmetry is a \textbf{quasi-metric}. The word \textbf{semimetric} is not used consistently in the literature, but often means a function that satisfies all properties but the triangle inequality.
+
+Throughout this section, similarity measures will be labeled \texttt{S}, dissimilarity mesures will be labeled \texttt{D}, distance metrics will be labeled \texttt{M}, and pseudometrics will be labeled \texttt{P}. We will name some of the key dissimilarity functions, and leave others as a generic $d$.
+
+\subsection{Similarities to dissimilarities and back}
+Sometimes, we may only have a measure of dissimilarity, but need a similarity, or vice-versa. In principle, for any strictly decreasing function $f:[0,\infty]\to [0,\infty]$, we can let similarity be $f(\text{dissimilarity})$ or let dissimilarity be $f(\text{similarity})$. Here are some options for converting a similarity $s$ to a dissimilarity $d$ \cite{smacof}:
+\begin{align*}
+    d(x,y)&=1/s(x,y)\\
+    d(x,y)&=\min_{x',y'}s(x',y')+\max_{x',y'}s(x',y')-s(x,y)\\
+    d(x,y)&=-\log\left(s(x,y)/\max_{x',y'}s(x',y')\right)
+\end{align*}
+Here are some options for converting a dissimilarity $d$ to a similarity $s$ \cite{espositosimdis}:
+\begin{align*}
+    s(x,y)&=\max_{x',y'}d(x',y')-d(x,y)\\
+    s(x,y)&=\sqrt{\max_{x',y'}d(x',y')-d(x,y)}\\
+    s(x,y)&=\max_{x',y'}d(x',y')^2-d(x,y)^2\\
+    s(x,y)&=1-\frac{d(x,y)}{\max_{x',y'}d(x',y')}\\
+    s(x,y)&=\frac{1}{1+d(x,y)}
+\end{align*}
+
+\subsection{Normed vector spaces}
+In a vector space where a norm is defined (e.g. Euclidean space), there are many induced dissimilarity measures that we can compute.
+
+\subsubsection{Minkowski distance \texttt{[D/M]}}
+The Minkowski distance of order $p$ is:
+\[d_p(x,y)=||x-y||_p=\left(\sum_{i=1}^D|x_i-y_i|^p\right)^{1/p}\]
+We go through some specific settings of $p$ and some limiting cases below.
+\subsubsection{Minkowsky as $p\to -\infty$ \texttt{[D]}}
+
+\[d(x,y)=\lim_{p\to-\infty}||x-y||_p=\min_i(|x_i-y_i|)\]
+To our knowledge there is no name for this in the literature.
+
+\subsubsection{Minkowsky as $p\to0^+$ \texttt{[M]}}
+\[d(x,y)=\lim_{p\to 0^+}\left(\sum_{i=1}^D|x_i-y_i|^p\right)^{1/p}=\B 1(x\neq y)=\begin{cases}1 & x\neq y\\0 & x= y\end{cases}\]
+\subsubsection{Manhattan Distance \texttt{[M]}}\label{sec:L1}
+This is Minkowski with $p=1$. If you're walking in a city with a grid system, this is the distance from point $x$ to point $y$:
+\[d(x,y)=||x-y||_1=\sum_{i=1}^d|x_i-y_i|\]
+
+\subsubsection{Euclidean Distance \texttt{[M]}}\label{sec:L2}
+This is Minkowski with $p=2$:
+\[d_{\R^D}(x,y)=||x-y||_2=\sqrt{\sum_{i=1}^D|x_i-y_i|^2}\]
+\subsubsection{Chebyshev distance \texttt{[M]}}
+This is Minkowski as $p\to \infty$:
+\[d(x,y)=\lim_{p\to\infty}||x-y||_p=\max_i(|x_i-y_i|)\]
+
+\subsection{Inner product spaces}
+\subsubsection{Cosine Similarity \texttt{[S]}}
+\[d(x,y)=\frac{x\x y}{||x||\;||y||}\]
+
+\subsection{Curved spaces}
+
+\subsubsection{Great-circle distance on a 2-sphere \texttt{[M]}}
+In geospatial data, we often have data points on a sphere like the Earth, expressed in latitude and longitude. If the points are spread over too large portion of the sphere's surface for distances in a local Euclidean tangent plane to be useful (or we are too lazy to project to a plane), then we can use the haversine formula. Suppose $x$ has latitude and longitude $\phi_1,\lambda_1$, $y$ has latitude and longitude $\phi_2,\lambda_2$, and the radius of the sphere is $r$. Then: \cite{haversine}
+\[d(x,y)=2r\arcsin \left(\sqrt{\sin^2\left(\frac{\phi_2-\phi_1}{2}\right)+\cos\phi_1\cos\phi_2\sin^2\left(\frac{\lambda_2-\lambda_1}{2}\right)}\right)\]
+\paragraph{Considerations} On the Earth, which is not a perfect sphere, this is only an approximation. If using a computer, beware of numerical instabilities if two points are antipodal.
+
+
+\subsection{Spaces of sets}
+Let $X$ and $Y$ be two metric spaces. Let $A$ and $B$ be subsets of $X$.
+\subsubsection{Hausdorff \texttt{[P/M]}}
+\[d_H(A,B) = \inf\{\epsilon:A\subseteq B_\epsilon, B\subseteq A_\epsilon\}\]
+\paragraph{Considerations} Because, if $A$ and $B$ have the same closure, $d_H(A,B)=0$, the Hausdorff distance is a metric only if we define it over equivalence classes of sets which have the same closure, or only consider closed subsets of our space.
+\subsubsection{Gromov-Hausdorff \texttt{[P/M]}}
+If $X$ and $Y$ are different metric spaces, or they are in the same metric space but we want to measure distance up to rigid transformations, then we can use the Gromov-Hausdorff distance:
+\[d_{GH}(X,Y) = \inf_{\substack{\theta_1:X\to Z\\\theta_2:Y\to Z\\\theta_i\ \mathrm{isometry}}}d_H(\theta_1(X),\theta_2(Y)).\]
+\paragraph{Computation} This is difficult to compute in practice, but if $X$ and $Y$ are finite:
+\[d_{GH}(X,Y)=\tfrac{1}{2}\inf_{R\subseteq X\times Y}\sup_{\substack{(x,y)\in R\\(x',y')\in R}}|d_X(x,x')-d_Y(y,y')|,\]
+which is more tractable. A useful property is that $d_{GH}(X,Y)\leq \frac{1}{2}\mathrm{diam}(X)\mathrm{diam(Y)}$.
+\paragraph{Considerations}
+Similarly to the Hausdorff distance, if $A$ and $B$ are different but isometric, $d_{GH}(A,B)=0$. So the Gromov-Hausdorff distance is a metric only if we define it over equivalence classes of isometric metric spaces.
+\subsection{Spaces of probability distributions}
+\subsubsection{Total Variation Distance \texttt{[M]}}
+Let $P$ and $Q$ be two probability measures on a metric space $X$.
+\[d_{TV}(P,Q)=\sup_{x\in X}|P(x)-Q(x)|\]
+As a useful inequality, we have that:
+\begin{align*}d_{TV}(P,Q)&\leq \sqrt{d_{KL}(P,Q)/2}& \text{(Pinsker's Inequality \cite{tsybakov})}\end{align*}
+
+
+\subsubsection{Wasserstein/Earth-Mover/Optimal-Transport/Kantorovich Distance \texttt{[M]}}
+We follow \cite{wassermanwasserstein}. Let $P$ be a probability measure on $X$, and $Q$ be a probability measure on $Y$. Let $\C J$ denote the set of all joint distributions over $(X,Y)$ that have marginals $P$ and $Q$.
+\[d_{W_p}(P,Q)=\left(\inf_{J\in \C J(P,Q)}\int_{X\times Y} d(x,y)^pdJ(x,y)\right)^{1/p}\]
+\paragraph{Computation} Computing this is easy in 1-dimensional space, as there the $J$ which realizes the infimum is just the joint distribution which maps quantiles of $P$ to quantiles of $Q$.
+
+\subsubsection{Kullback-Leibler (KL) Divergence / Relative Entropy \texttt{[D]}}
+Let $P$ and $Q$ be probability measures on $X$. If $X$ is discrete:
+\[d_{KL}(P,Q) = \sum_{x\in X}P(x)\log\left(\frac{P(x)}{Q(x)}\right)\]
+If $X$ is not discrete:
+\[d_{KL}(P,Q) = \int_{X}P(x)\log\frac{P(x)}{Q(x)}dx\]
+If $P_1$ and $Q_1$ are probability measures on $X$, $P_2$ and $Q_2$ are probability measures on $Y$, and $P=P_1P_2$ and $Q=Q_1Q_2$, then we have that:
+\begin{align*}d_{KL}(P,Q)&=d_{KL}(P_1,Q_1)+d_{KL}(P_2,Q_2) & \text{\cite{tsybakov}}\end{align*}
+%TODO: state all the conditions, add one-dimensional continuous
+\paragraph{Considerations} KL Divergence doesn't satisfy the triangle inequality. And unlike most measures of dissimilarity, it doesn't satisfy symmetry. We can, however, symmetrize by taking $D_{KL}(P,Q)+D_{KL}(Q,P)$, obtaining what is sometimes called ``KL Distance,'' though it is also not a metric. \cite{kldist,tsybakov}.
+
+%\subsubsection{Inequalities}
+%Here are some inequalities for the distances presented here.
+
+\subsection{Spaces of text or strings}
+Sometimes our data can be thought of as a sequence of symbols, such as ``ahhhhhh'' and ``cat.'' (see for example, genetic data). How can we define a distance between such objects? We follow \cite{stringmatching} in our discussion.
+
+First let's define four operations:
+\begin{itemize}
+    \item Insertion. We insert one character somewhere into the string.
+    \item Deletion. We delete one character somewhere in the string.
+    \item Substitution. We replace one character in the string with some character.
+    \item Transposition. We swap two adjacent characters in the string.
+\end{itemize}
+
+\subsubsection{Levenshtein/edit distance \texttt{[M]}}
+This is the minimum number of one-character insertions, deletions, and substitutions it takes to get from string $x$ to string $y$ or vice-versa.
+\paragraph{Computation} Luckily there is a simple recursive formula:
+\[d(x,y)=\begin{cases}|x| & |y|=0\\ |y| & |x|=0\\ d(x_{2,\ldots,|x|},y_{2,\ldots,|y|}) & x_1=y_1\\ 1+\min\begin{cases}d(x_{2,\ldots,|x|},y)\\(x,y_{2,\ldots,|y|})\\d(x_{2,\ldots,|x|},y_{2,\ldots,|y|})\end{cases} &\text{o.w.} \end{cases}\]
+
+\subsubsection{Hamming distance \texttt{[M]}}
+This is the minimum number of substitutions to get from string $x$ to string $y$ or vice-versa.
+
+\paragraph{Computation} This is just the number of characters which differ between the two strings.
+\paragraph{Considerations} The two strings must be of equal length, as otherwise we cannot turn one into the other only with substitutions.
+
+\subsubsection{Episode distance \texttt{[D]}}
+This is the minimum number of insertions to get from one string to the other.
+
+\paragraph{Considerations} This is not symmetric. If $|x|>|y|$, then $d(x,y)=\infty$. Similarly if $y$ does not contain $x$ as a (not necessarily consecutive) subsequence, then $d(x,y)=\infty$. We see that actually $d(x,y)$ is either $\infty$ or $|y|-|x|$.
+
+\subsubsection{Longest Common Subsequence \texttt{[M]}}
+This is the minimum number of insertions and deletions to get from string $x$ to string $y$.
+
+\paragraph{Computation} This is the length of the longest common (ordered) subsequence. This is a well-studied problem in algorithms and admits a recursive solution. Let $LCS(i,j)$ denote the length of the longest common subsequence between $x_{1,\ldots,i}$ and $y_{1,\ldots, j}$, such that $d(x,y)=LCS(|x|,|y|)$. Then we can make the following recurrence relation: \cite{algos}
+\[LCS(i,j)=\begin{cases}0 & i=0\text{or} x=0\\ LCS(i-1,j-1)+1 & i,j>0,x_i=y_j\\ \max(LCS(i,j-1),LCS(i-1,j)&i,j>0,x_i\neq y_j\end{cases}\]%TODO: explain name and give recursive formula.
+
+
+\subsection{Building graphs} \label{sec:graphs}
+For any of the graphs below, if we want them to be weighted we can give edge $(x,y)$ the weight $d(x,y)$.
+\subsubsection{\texorpdfstring{$k$-nn}{k-nn} graph}
+In this graph the vertices are the points of the dataset and the edges are between nearest neighbors:
+\[G=(V,E):\ V=X,\ E=\{(x,y)|y\in k\text{-NN of }x\}\]
+This graph can be treated as directed or undirected.
+
+\paragraph{Considerations} If treated as directed, it is possible that there is an edge $(x,y)$ and no edge $(y,x)$, which may or may not be desirable.
+
+\subsubsection{\texorpdfstring{$\epsilon$}{ε}-ball graph}\label{sec:epsilonballgraph}
+In this graph the vertices are the points of the dataset and the edges are between points within a distance of $\epsilon$ of each other:
+\[G=(V,E):\ V=X,\ E=\{(x,y)|d(x,y)<\epsilon\}\]
+If $d$ is symmetric, this graph will behave the same whether directed or undirected. In principle though a non-symmetric dissimilarity measure $d$ could be used.
+
+\paragraph{Computation} This graph is easy to compute with matrix operations as the adjacency matrix will simply be 1 where the distance matrix is $\leq \epsilon$, and 0 everywhere else.
+
+\paragraph{Considerations} It is very easy in practice to make a disconnected graph if a small $\epsilon$ is chosen, which may or may not be desirable for downstream tasks.
+
+\subsection{Spaces on graphs}
+Using the graphs in the subsection above, we can compute certain distances and similarities.
+\subsubsection{Path metric \texttt{[M]}}\label{sec:pathdist}
+\[d(x,y)=\{\text{Path distance from $x$ to $y$ in $G$}\}\]
+In practice this can be computed efficiently by e.g.~Dijkstra's algorithm.
+
+\subsubsection{Adjacency matrix \texttt{[S]}}\label{sec:adjacency}
+This is a measure of similarity which is simply the adjacency matrix of the graph:
+\[s(x,y)=\begin{cases}1; & (x,y)\in E\\ 0; & (x,y)\not\in E\end{cases}\]
+
+\subsubsection{Heat Kernel \texttt{[S]}}\label{sec:heat-kernel}
+This is a measure of similarity which is a bit more involved than simply the adjacency matrix:
+\[s(x,y)=\begin{cases}\exp\left(\frac{-d(x,y)^2}{2\sigma^2}\right); & (x,y)\in E\\ 0; & (x,y)\not\in E\end{cases}\]
+\paragraph{Considerations} The choice of $\sigma$ will affect downstream tasks. Decreasing $\sigma$ increases the difference in the similarities between close and distant points.
+
+\iffalse
+\subsection{Choose your own distance or similarity!}
+Sometimes, for a given dataset, no standard, domain-independent distance metric will make sense. In biology, for example, we can think of the distance between two species or individuals as a ``pseudotime'' of how long it would take one to evolve to the other. This depends on a particular model of evolution and probability of substituting certain base pairs for certain other base pairs, and can itself depend on real-world data. It would not make sense to, say, somehow convert the base pairs into numbers, embed the points in Euclidean space, use the Euclidean metric, and call it a day.
+\fi
+
+\section{Dimension-reduction}
+
+\subsection{Definitions}
+
+\subsubsection{Useful Matrices}
+
+Having defined these variables, we can now define a several useful matrices used in dimension-reduction. Let $n$ be the number of data points in our dataset, $D$ be the dimension of our data, and $d$ be the target dimension.
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{l|llll}
+    Symbol & \_\_\_ matrix & Calculation & Dimension & PSD\\\hline
+    $\B X$ & Data & $X_{i*}=x_i$ & $n\times D$ & No \\
+    $\B D$ & Distance & $D_{ij}=d(x_i,x_j)$ & $n\times n$ & Often\\
+    $\B D^{(2)}$ & Squared distance & $D^{(2)}_{ij}=(D_{ij})^2$& $n\times n$ & Often\\
+    $\B W$ & Weight/similarity/adjacency & \textit{Various} & $n\times n$ & No\\
+    $\B {D_g}$ & Degree & $\mathrm{diag}\left(\sum_{j} W_{ji}\right)$ & $n\times n$ & Yes\\
+    $\B L$ & Laplacian & $\B{D_g}-\B W$ & $n\times n$ & Yes\\
+    $\B G$ & Gram & $G_{ij}=\abr{x_i,x_j}$ & $n\times n$ & Yes\\
+    $\B I_n$ & Identity & $I_{n,ij}=\B 1_{[i=j]}$ & $n\times n$ & Yes\\
+    $\B C_n$ & Centering & $\B I_n - \frac{1}{n} \B 1 \B 1^t$ & $n\times n$ & Yes\\
+    $\B{\tilde X}$ & Centered data & $\B C_n \B X $ & $n\times D$ & No\\
+    $\B C$ & Empirical covariance & $\frac{\B{\tilde X}\;\B{\tilde X}^T}{n}$\text{ or }$\frac{\B{\tilde X}\;\B{\tilde X}^T}{n-1}$  & $D\times D$ & Yes\\
+    $\B R$ & Random & \textit{Various} & $D\times d$ & No\\
+    $\B P$ & Projection & \textit{Various} & $D\times D$ & No\\
+    $\B K$ & Kernel & $K_{ij}=K(x_i,x_j)$ & $n\times n$ & Often\\
+    %$\B{\tilde{\tilde X}}$ & Doubly-centered data & $\B C_n \B X \B C_p$ & $n\times p$ & No\\
+\end{tabular}
+\end{table}
+
+Note that the data matrix is defined as $n\times D$ (so rows are observations, columns are features), and not $D\times n$. The convention varies in different fields and subfields, but we will consistently use $n\times D$, so some of the equations below may be transposes of versions common in the literature.
+
+
+\subsubsection{Top and bottom eigenvectors}
+\noindent The \textbf{bottom}-$k$ \textbf{eigenvectors} of a matrix are the eigenvectors corresponding to the matrix's $k$-smallest eigenvalues. The \textbf{top}-$k$ \textbf{eigenvectors} are the eigenvectors corresponding to the $k$-largest eigenvalues.
+
+\subsection{Principal Component Analysis}
+\subsubsection{Linear PCA}
+\paragraph{Definition}
+Given $p$-dimensional data $x_1,\ldots,x_n$, we want to choose a $d$-dimensional subspace of $\R^D$ where, once we project each point to this subspace to obtain $y_1,\ldots,y_n$. If we consider $y_1,\ldots,y_n$ as still being points in $\R^d$, we minimize:
+\[\sum_{i=1}^n d_{\R^D}(x_i,y_i)^2=||\B X\B P-\B X||_F^2,\]
+where $\B P$ is a $D\times D$ rank-$d$ orthogonal projection matrix. The norm on the right is the Frobenius norm.
+\paragraph{Computation}
+\begin{enumerate}
+    \item Compute the covariance matrix $\B C$ of the data.
+    \item Let $\B V$ be the $D\times d$ matrix of the bottom $d$ eigenvectors of $\B C$.
+    \item Our embedded data is $\B Y=\B{X}\B V$
+\end{enumerate}
+%\subsubsection{Sparse PCA}
+\paragraph{Considerations} Since the map is linear, if we think our data come from a manifold that is not a hyperplane, PCA will perform poorly.
+
+\subsubsection{Kernel/nonlinear PCA}
+Linear PCA obtains a linear map $\B V$ which multiply by our data $\B X$ to obtain $\B Y$% If $\phi:\R^Dto \R^{D'}$, $D'\gg D$, Let $\B X_\phi$ be the $\B n\times D'$ data matrix where we apply $\phi$ to $X$.
+
+Rather than just projecting $\B X$, let's suppose we have some nonlinear function $\phi: \R^D \to \R^{D'}$, where $D'\gg D$. Denote by $\B X_\phi$ the data matrix when $\phi$ is applied to the data. We are now interested in minimizing:
+\[||\B X_\phi\B P-\B X_\phi||_F^2\]
+Where $\B P$ is now a $D'\times d$ projection matrix. We are essentially looking for projections of a higher-dimensional representation of $X$.
+
+It turns out that we can \textit{kernelize} the method and never have to actually compute $\B X_\phi$. This requires that we have a \textbf{kernel function} $K:X\times X\mapsto \C R$ where $K(x,y)=\abr{\phi(x),\phi(y)}$. In fact, we can completely ignore $\phi$ and the inner product and just imagine that we have some function $K:X\times X\mapsto \C R$ which, when represented as a matrix, is positive semi-definite.
+
+\paragraph{Computation} To do Kernel PCA we can use the following approach \cite{fml}:
+\begin{enumerate}
+    \item Compute the $n\times n$ kernel matrix $\B K$ according to $K_{ij}=K(x_i,x_j)$.
+    \item Let $\B V$ be the $n\times d$ matrix of the bottom $d$ eigenvectors of $\B K$.
+    \item If we let row $i$ of $\B V$ be $\B v_i$, then our embedding for $x_i$ is $\B v_i$ elementwise multiplied with the vector $(\lambda_1,\ldots,\lambda_d)$ of eigenvalues of $\B K$.
+\end{enumerate}
+
+Several other dimension-reduction methods can be represented as Kernel PCA with a specific $\B K$. Where this is possible, we will note this below.
+\subsection{Random Projections}
+We follow \cite{verysparse} in our discussion of different projection matrices.
+\subsubsection{General method}
+\paragraph{Definition} Given data $\B X$, we create a random matrix $D\times d$ matrix $\B R$ with entries $\{R_{ij}\}$ which are iid with mean zero, and let our projected data be $\B Y=\frac{1}{\sqrt{d}}\B X \B R$.
+\subsubsection{Johnson-Lindenstrauss lemma}
+For some $0<\epsilon<1$, let $d\in \mathbb{N}$ be such that:
+\begin{align*}
+d&\geq 24\ln n/(3\epsilon^2-2\epsilon^3)\ \text{\cite{jl}}\\
+d&\geq 20\ln n/\epsilon^2;\ n>4\quad \text{\cite{fml}}
+\end{align*}Then $\exists$ $f:\R^D\to\R^d$ with:
+\[(1-\epsilon)d_{\R^D}(x,y)^2\leq d_{\R^d}(f(x),f(y))^2\leq (1+\epsilon)d_{\R^D}(x,y)^2\]
+This lemma does not on its own justify random projections (as a satisfying $f$ might be nonlinear). However, one way to prove the lemma is a probabilistic argument which shows that, if we take a projection to a random $d$-dimensional subspace of $\R^D$, and let $f$ be that projection scaled by $\sqrt{n/d}$, the probability that $f$ doesn't satisfy the error bounds is $\leq 1-\frac{1}{n}<1$. Since there is a pretty decent probability $\geq 1/n$ of a random projection satisfying the bounds, random projections are a good idea.
+\subsubsection{Conventional random projections}
+\[R_{ij}\sim N(0,1)\]
+\paragraph{Considerations} If the data is very-high dimensional, computing $\frac{1}{\sqrt{d}}\B X\B R$ will be computationally expensive, as we can't use any sparsity in $\B R$.
+\subsubsection{Sparse random projections}\label{sec:sparserp}
+\[R_{ij}=\sqrt{s}\begin{cases}1 & \text{w.p. }1/2s \\ 0 & \text{w.p. }1-1/s \\ -1 & \text{w.p. }1/2s\end{cases}\]
+\paragraph{Computation} If the multiplication by $\sqrt{s}$ is done after projecting, then the projection can be done via a bunch of highly efficient database aggregations because only multiplication by 1, 0, and -1 is required.
+\subsubsection{Very sparse random projections}
+Sparse random projections (\ref{sec:sparserp}) with $s=o(D)$, e.g. $s=\sqrt{D}$ or $s=D/\log D$. See \cite{verysparse} for discussion of the error bounds.
+
+\subsection{Multidimensional Scaling (MDS)}\label{sec:mds}
+We follow \cite{modernmds} in our discussion.
+% \subsubsection{Non-metric MDS}
+
+\subsubsection{Metric MDS}
+In metric MDS, for some $p$ and some $f$ mapping our points $\B X$ to a $d$-dimensional Euclidean space, we want to minimize the stress function:
+\[\left(\sum_{i\neq j}[d(x_i,x_j)^p-d_{\mathbb{R}^d}(f(x_i),f(x_j))]^2\right)^{1/2}\]
+\subsubsection{Classical MDS}\label{sec:classical-mds}
+\paragraph{Definition} In Classical MDS, we set $p=1$ in the above equation. The strain function which we want to minimize can then be written as:
+\[\left(\frac{\sum_{i,j} ((\B B)_{ij}-f(x_i)^Tf(x_j))^2}{\sum_{i,j}(\B B)_{ij}^2}\right)^{1/2},\]
+where $\B B$ is as defined below.
+When the distances are Euclidean, classical MDS is equivalent to PCA.
+
+\paragraph{Computation} Given distance matrix $\B D$ and number of points $n$, if we want to reduce to $d$ dimensions, this problem can be solved using the following algorithm:\cite{mdsintro}
+\begin{enumerate}
+    \item Given a distance matrix $\B D$, compute the elementwise squared distance matrix $\B D^{(2)}$.
+    \item Let  $\B B=-\frac{1}{2} \B C_n \B D^{(2)} \B C_n$
+    \item Compute the $d$ largest positive eigenvalues $\lambda_1,\ldots,\lambda_d$ of $\B B$ and their corresponding eigenvectors $ e_1,\ldots, e_d$
+    \item Let $\B V$ be the $n\times d$ matrix of eigenvectors and $\B \Lambda$ be the $d\times d$ diagonal matrix of $\lambda_1,\ldots,\lambda_d$. The new $n\times d$ embedding of our data is $\B Y=\B V\boldsymbol\Lambda^{1/2}$.
+\end{enumerate}
+
+\noindent If $n$ is very large, doing MDS on the whole dataset may be expensive. Instead, we can choose a small subset of $m\ll n$ ``landmark'' points, embed them in the lower-dimensional space, then use the distances of the rest of the points to the landmark points to embed them in the lower-dimensional space too. Here is an outline of how this, called \textbf{Landmark MDS} is done \cite{landmarkmds}:
+
+\begin{enumerate}
+    \item Choose a subset of $m\ll n$ points and compute their $m\times m$ distance matrix $\B D$.
+    \item Do MDS as above using this distance matrix to obtain an embedding $\B Y'$ of the $m$ points.
+    \item Let $\delta_i$ be the vector of squared distances from landmark $i$ to all of the landmarks, and let $\delta_\mu=(\delta_1+\ldots+\delta_m)/m$. Let $L^\sharp=[e_1/\sqrt{\lambda_1},\ldots,e_d/\sqrt{\lambda_d}]^T$
+    \item Now for a point $x$ which is not a landmark, if $\delta_x$ is its vector of squared distances to the $m$ landmarks, we embed $x$ as $y=-\frac{1}{2}L^\sharp (\delta_x-\delta_\mu)$. 
+\end{enumerate}
+
+\paragraph{Kernel PCA Equivalence} The matrix $\B B$ obtained can be used as the kernel matrix $\B K$ in Kernel PCA, as long as $\B B$ is PSD. \cite{fml}
+
+
+\subsection{Isomap}
+\paragraph{Definition}
+This method simply combines what we have described above \cite{isomap}:
+\begin{enumerate}
+    \item Build a weighted graph from the data (\ref{sec:graphs})
+    \item Compute a distance matrix of shortest-path distances (\ref{sec:pathdist})
+    \item Apply classical MDS to the distance matrix to obtain the embedding (\ref{sec:classical-mds})
+\end{enumerate}
+\paragraph{Kernel PCA Equivalence} The matrix $\B B$ obtained in the use of MDS in (3) can be used as the kernel matrix $\B K$ in Kernel PCA, as long as $\B B$ is PSD. \cite{fml}
+\paragraph{Considerations} The resulting embedding is highly sensitive to the choices made when doing step 1.
+\subsection{Laplacian Eigenmaps}\label{sec:laplacian-eigenmaps}
+\paragraph{Definition} This method is a relatively simple combination of things discussed above:
+\begin{enumerate}
+    \item Build an unweighted graph from the data (\ref{sec:graphs})
+    \item Compute a similarity matrix $\B W$ from the graph (\ref{sec:adjacency} or \ref{sec:heat-kernel})
+    \item Compute the Laplacian $\B L$ from $\B W$. 
+    \item Compute the bottom $k$ eigenvectors $e_1,\ldots,e_k$ of $\B L$ after discarding the 0-eigenvalue.
+    \item The new embedded data is the $n\times k$ matrix $X'=[e_1,\ldots,e_k]$
+\end{enumerate}
+\paragraph{Computation} Standard matrix algorithms can be used for these. $\B W$ and $\B L$ can be stored and worked with as sparse matrices, as the $\B W$ created will naturally be sparse in a graph which is not fully-connected.
+\paragraph{Kernel PCA Equivalence} If we let $\B L^\dagger$ be the pseudoinverse of $\B L$, $\B L^\dagger$ can be used as the kernel matrix $\B K$ in Kernel PCA, as long as $\B L^\dagger$ is PSD. To make Kernel PCA with this $\B K$ equivalent to Laplacian Eigenmaps we must scale the output dimensions to have unit variance. \cite{fml}
+\paragraph{Considerations} The resulting embedding is highly sensitive to the choices made when doing steps 1 and 2.
+\subsection{Locally Linear Embedding (LLE)}
+\paragraph{Definition} The intuition here is that each point on a manifold can be represented as a linear combination of its nearest neighbors, and an embedding in lower-dimensional space should have the same linear combination for each point.
+\begin{enumerate}
+    \item Compute the $k$ nearest neighbors of each point $x_i$, or use an $\epsilon$-ball.
+    \item Compute $W_{ij}$ that minimizes:
+        \[\sum_{i=1}^n\left|\left|x_i-\sum_{j=1}^nW_{ij}x_j\right|\right|_2^2\]
+        subject to $\sum_j W_{ij}=1$, and $W_{ij}=0$ if $x_j$ is not a neighbor of $x_i$ (or is not in its $\epsilon$-ball).
+    \item Compute $d$-dimensional coordinates $y$ that minimize:
+        \[\sum_{i=1}^n\left|\left|y_i-\sum_{j=1}^nW_{ij}y_j\right|\right|_2^2\]
+        subject to $\sum_{j}Y_{ij}=0$ and $\B Y^T\B Y=I$. This is called the ``reconstruction error.''
+\end{enumerate}
+\paragraph{Computation} We follow \cite{lleintro} in our discussion.
+
+To find the weights, we can actually find the weight for each point $x_i$ individually. First, for a point $x_i$, if $x_i$ has $k$ neighbors (or $k$ points in its $\epsilon$-ball) $\eta_1,\ldots,\eta_k$, let's define the $k\times k$ local covariance matrix $\B C^{(L)}$ as:
+\[C^{(L)}_{lm}=\abr{x_i-\eta_l,x-\eta_m}\]
+Some texts refer to this as the \textbf{Gram Matrix} $\B G_i$, as it is a matrix of inner products of a set of vectors which depends on $x_i$.
+
+The $j$th weight $w_j$ for $x_i$ will be:
+\[w_j=\frac{\sum_m C^{(L),-1}_{jm}}{\sum_{lm} C^{(L),-1}_{lm}}\]
+It is actually more efficient to solve the system of linear equations:
+\[\sum_l C^{(L)}_{lm}w_m=1\]
+and rescale so that $\sum_m w_m=1$.
+
+Now, the $n\times n$ weight matrix $\B W$ be such that the $i$th row $\B W_{i*}$ is defined as:
+\[\B W_{i*}=\bmat{0 & 0 & w_1^{(x_i)} & 0 &\cdots & w_k^{(x_i)}& 0},\]
+where the nonzero entries appear at the indices of the neighbors of $x_i$. To find $Y$, we can compute:
+\[M=(\B I_n-\B W)^T(\B I_n-\B W)\]
+and take the $d$ eigenvectors $e_1,\ldots, e_d$ corresponding to the $d$ smallest eigenvalues excluding the smallest one. Taking $\B Y=[e_1,\ldots,e_d]$, the rows of $\B Y$ are the new data points.
+\paragraph{Kernel PCA Equivalence} If we let $\lambda$ be the largest eigenvalue of $\B M$, $\B \lambda \B I_n-\B M$ can be used as the kernel matrix $\B K$ in Kernel PCA. \cite{fml}
+
+\section{Clustering}
+
+\subsection{Definition}
+A clustering of $X$ made up of $k$ clusters is a collection of sets $C=\{C_i\}_{i=1}^k$, where $C$ forms a partition of $X$ ($C_i\subseteq X$, $i\neq j\Rightarrow  C_i\cap C_j=\emptyset$, $\bigcup_i C_i=X$).
+
+\subsection{Centroid methods}
+These methods seek to find a set of points $c_1,\ldots,c_k$, and from these a collection of clusters $\{C_i\}_{i=1}^k$ with:
+\[C_i=\{x\in X|\forall j\ d(x,c_i)\leq d(x,c_j)\},\]
+such that one of these objectives is minimized:
+\begin{align*}
+&\frac{1}{2}\sum_{i=1}^k\sum_{x,y\in C_k}d(x,y)\stackrel{d=d_{\R}^2}= 
+\sum_{i=1}^kn_k\sum_{x\in C_i}d(x,c_i)\quad \text{\cite{esl}}\\
+&\sum_{i=1}^k\sum_{x\in C_i}d(x,c_i)\quad \text{\cite{ciml}}
+\end{align*}
+The first objective given, which is the sum of all inter-point distances in the clusters, is called \textbf{within-point scatter}. Where centroid methods differ is in the distance or dissimilarity $d$ used and in restrictions on $c_1,\ldots,c_k$. These impact what different algorithms can be used to solve the problem or approximate the solution.
+\subsubsection{\texorpdfstring{$k$}{k}-means}\label{sec:kmeans}
+\textbf{Distance}: Euclidean distance is used for $d(x,c_i)$ (\ref{sec:L2})\\
+\textbf{Centroids}: No restrictions on $c_1,\ldots,c_k$
+
+\paragraph{Computation}
+An approximation algorithm for this is what is commonly known as the ``$k$-means clustering algorithm.''
+\begin{enumerate}
+    \item Initialize randomly chosen cluster centers $\{c_i\}_{i=1}^k$. There are many ways to do this. One is to randomly choose points in the data.
+    \item Until cluster assignments don't change:
+        \begin{enumerate}
+            \item Assign each $x$ to the cluster $C_i$ with the nearest corresponding $c_i$.
+            \item Compute $c_i$ as the mean of cluster $C_i$.
+        \end{enumerate}
+\end{enumerate}
+\iffalse
+As an alternative to the $k$-means algorithm, we can define an integer program which minimizes $\sum_{i,j}z_{ij}d(x_i,x_j)$, where $z_{ij}\in \{0,1\}$ represents whether (1) or not (0) $x_i$ and $x_j$ are in the same cluster. Of course there are constraints where $z_{ij}=z{ji}$ and \fi
+\paragraph{Considerations} The $k$-means clustering algorithm will not necessarily find a globally optimal solution. In practice, we can run it many times and choose the resulting clustering which minimizes the objective \cite{ciml}. The algorithm can also run into cases where, in step 2(b), cluster $C_i$ is empty, in which case $c_i$ can be chosen randomly.
+
+%\subsubsection{Fuzzy \texorpdfstring{$k$}{k}-means}\label{sec:fuzzykmeans}
+
+\subsubsection{\texorpdfstring{$k$}{k}-medians}\label{sec:kmedians}
+\textbf{Distance}: Manhattan distance is used for $d(x,c_i)$ (\ref{sec:L1}) \\
+\textbf{Centroids}: No restrictions on $c_1,\ldots,c_k$.
+
+\paragraph{Computation}
+An approximation algorithm for this which is very similar to the $k$-means algorithm can be used:
+\begin{enumerate}
+    \item Assign each $x$ to the cluster $C_i$ with the nearest (Manhatan distance) corresponding $c_i$. (can initialize with randomly chosen $c_i$'s)
+    \item Compute $c_i$ as the median of cluster $C_i$ (in Euclidean spaces with more than one dimension, the ``median'' of a set of points can be computed using the median along each axis)
+\end{enumerate}
+
+\subsubsection{\texorpdfstring{$k$}{k}-medoids}\label{sec:kmedoids}
+\textbf{Distance}: Any distance metric can be used for $d(x,c_i)$ \\
+\textbf{Centroids}: $c_1,\ldots,c_k$ must be points in the data.
+
+\paragraph{Computation}
+This can be approximated by repeatedly swapping some $c_i$ with a point in the data and seeing if it reduces the cost defined above. Alternatively, we can use an algorithm similar to $k$-means: \cite{esl}
+\begin{enumerate}
+    \item Initialize randomly chosen cluster assignment.
+    \item Until cluster assignments don't change:
+        \begin{enumerate}
+        \item Let the center $c_i$ of cluster $C_i$ be $\mathrm{argmin}_{x\in C_i}\sum_{y\in C_i}d(x,y)$ 
+        \item Assign each $x$ to the cluster $C_i$ with the nearest (using $d$) cluster center.
+        \end{enumerate}
+\end{enumerate}
+
+\subsection{Agglomerative/Bottom-up Hierarchical Clustering}
+
+\subsubsection{General Method}
+These methods are all fundamentally the same. They rely on repeatedly merging the two clusters which are ``closest.''
+\begin{enumerate}
+    \item Start with a collection of clusters $\{C_i\}_i=\{\{x_i\}\}_i$
+    \item Until the collection of clusters is $\{X\}$:
+        \begin{enumerate}
+            \item Let $A,B$ be the clusters in $\{C_i\}_i$ minimizing $d(A,B)$
+            \item Merge $A$ and $B$. i.e.~$\{C_i\}_i\leftarrow (\{C_i\}_i-\{A,B\})\cup \{A\cup B\}$.
+        \end{enumerate}
+\end{enumerate}
+The distinction between them is how ``closeness'' $d(A,B)$, a.k.a.~the ``linkage criterion'' is defined and certain computational improvements which can be made for some definitions of closeness. We follow \cite{clusteranalysis} in our discussion of these.
+
+\subsubsection{Dendrograms}
+When agglomerative hierarchical clustering is performed, we may create a ``dendrogram'' by making a tree recording how the clusters joined over time, with each node being a cluster merger. The altitude of the node for $A$ and $B$ joining is $d(A,B)$. A clustering is considered \textit{stable} if it covers a large range of altitudes, and \textit{unstable} otherwise.
+
+\subsubsection{Lance and Williams method}
+Many of the algorithms described are instances of the general Lance and Williams (LW) method, where the distance between a cluster $C$ and a cluster $A\cup B$ formed by merging clusters $A$ and $B$ is given by:
+\[d(A\cup B, C)= \alpha_A d(A,C)+\alpha_B d(B,C) + \beta d(A,B)+\gamma|d(A,C)-d(B,C)|\]
+When this can be used for a given $d$, agglomerative hierarchical clustering can be done in $O(n^2\log(n))$ \cite{clusteranalysis}.
+\subsubsection{Minimum/Single-Linkage clustering (SLC)}
+\[d(A,B)=\min_{a\in A,b\in B}d(a,b)\]
+The LW parameters are:
+\[\alpha_A=\alpha_B=1/2,\ \beta=0,\ \gamma=-1/2,\] giving the recurrence relation:
+\[d(A\cup B,C)=\min (d(A,C),d(B,C)).\]
+We can also think about the clustering at the point where all $x$ and $y$ with $d(x,y)\leq \epsilon$ are in the same cluster (which is achieved when we've only recursively merged up to the point where $d(A,B)$ is still $<\epsilon$). This clustering is the same as the connected components of the $\epsilon$-ball graph (\ref{sec:epsilonballgraph}).
+
+\paragraph{Considerations} A thin chain of points between two real clusters will make them one cluster in Single-Linkage clustering, making SLC not very robust to noise.
+\subsubsection{Maximum/Complete-Linkage clustering}
+\[d(A,B)=\max_{a\in A,b\in B}d(a,b)\]
+The LW parameters are:
+\[\alpha_A=\alpha_B=1/2,\ \beta=0,\ \gamma=1/2,\] giving the recurrence relation:
+\[d(A\cup B,C)=\max (d(A,C),d(B,C)).\]
+\subsubsection{Unweighted average linkage clustering (UPGMA)}
+\noindent ``Unweighted Pair Group Method with Arithmetic mean.''
+\[d(A,B)=\frac{1}{|A||B|}\sum_{a\in A}\sum_{b\in B}d(a,b)\]
+The LW parameters are:
+\[\alpha_A=\frac{|A|}{|A|+|B|},\ \alpha_B=\frac{|B|}{|A|+|B|},\ \beta=0,\ \gamma=0,\]
+giving the recurrence relation:
+\[d(A\cup B,C)=\frac{|A|}{|A|+|B|}d(A,C)+\frac{|B|}{|A|+|B|}d(B,C).\]
+This is called ``unweighted'' because each point ends up getting the same weight when the distances are averaged.
+
+\subsubsection{Weighted average linkage clustering (WPGMA)}
+``Weighted Pair Group Method with Arithmetic mean.'' There is actually no way to write $d(A,B)$, as it depends on the sequence of merges which constructed $A$ and $B$. WPGMA can, however, be expressed with the LW parameters:
+\[\alpha_A=\alpha_B=\frac{1}{2},\ \beta=0,\ \gamma=0,\]
+giving the recurrence relation:
+\[d(A\cup B,C)=\frac{1}{2}d(A,C)+\frac{1}{2}d(B,C).\]
+This is called ``weighted'' because points in smaller clusters end up getting a higher weight when the distances are averaged.
+\subsubsection{Unweighted centroid linkage (UPGMC)}
+If we call the centroid of cluster $A$ $c_A$, and that of cluster $B$ $c_B$, then:
+\[d(A,B)=d(c_A,c_B)\]
+This can't be expressed in LW parameters, but with some reasoning we can get the recurrence relation that:
+\[c_{A\cup B}=\frac{|A|}{|A|+|B|}c_A+\frac{|B|}{|A|+|B|}\]
+And then:
+\[d(A\cup B, C)=d(c_{A\cup B},c_C)\]
+\subsubsection{Weighted centroid linkage (WPGMC)}
+If we call the centroid of cluster $A$ $c_A$, and that of cluster $B$ $c_B$, then:
+\[d(A,B)=d(c_A,c_B)\]
+Now, when we join clusters, rather than taking the true centroid we take the simple mean of the centroids of the two clusters (this is similar to the distinction between UPGMA and WPGMA):
+\[c_{A\cup B}=0.5c_A+0.5c_B\]
+And then:
+\[d(A\cup B, C)=d(c_{A\cup B},c_C)\]
+Like UPGMC this can't be expressed with LW parameters.
+
+\subsection{Divisive/Top-down Hierarchical Clustering}
+
+Top-down approaches to hierarchical clustering start with one cluster containing all of the points, then progressively break it up. 
+\subsubsection{diana}
+The name of this method is short for DIvisive ANAlysis clustering. Here is its algorithm:
+\begin{enumerate}
+    \item Start with all points in one cluster, i.e. with the clustering $C=\{X\}$.
+    \item Until we have reachced the desired number of clusters (or each point is in its own cluster):\begin{enumerate}
+        \item Pick a cluster $C_i\in C$ (say, the largest one)
+        \item Find the point $x$ whose average distance to all points in $C_i$ is maximized.
+        \item Create a cluster $A=\{x\}$ and $B=C_i-\{x\}$.
+        \item Until there are no such points, add points to $A$ which have the highest positive difference:
+            \[\text{[Average distance to $B$]}-\text{[Average distance to $A$]}\]
+        \item Let $C=C\cup \{A\}\cup \{B\}-\cup \{C_i\}$
+        \end{enumerate}
+\end{enumerate}
+
+\subsection{Generative/Distribution-based Clustering}
+\newcommand{\btheta}{\boldsymbol\theta}
+\newcommand{\bpi}{\boldsymbol\pi}
+In generative clustering methods, we define some mixture model $M$ (which is a mixture over $k$ different submodels $M_1,\ldots,M_k$) of how our data are generated:
+\[x_1,\ldots,x_n\stackrel{iid}{\sim} M = \begin{cases}M_1 & \text{w.p. }\pi_1\\\vdots\\M_k & \text{w.p. } \pi_k\end{cases}.\]
+After fitting the model to the data (i.e. choosing parameters $\theta_i$ for each $M_i$ and priors $\pi_i$) to maximize likelihood:
+\[\boldsymbol\theta,\boldsymbol\pi = \argmax_{\btheta,\bpi} P(x_1,\ldots,x_n|M,\btheta,\bpi),\]
+we assign each point to the part of the mixture model which assigns it the highest probability, hence getting that the $i$th cluster $C_i$ is:
+\[C_i=\{x\in X|\forall j\ \pi_iP(x|M_i,\btheta)\geq \pi_jP(x|M_j,\btheta)\}\]
+
+\subsubsection{Gaussian mixture}
+\paragraph{Definition} Here $M_i$ is $N(\mu_i,\Sigma_i)$ and $\boldsymbol \theta$ is $\{\mu_i,\Sigma_i\}_i$.
+\paragraph{Computation} It is hard to maximize the likelihood here exactly, but we can use an Expectation-Maximization algorithm to find a local maximum:
+\begin{enumerate}
+    \item Initialize $\btheta$ randomly, $\bpi$ uniform. Initialize the assignment weight of $x_i$ to cluster $j$ $w_j^{(i)}$ as $1/k$.
+    \item Until $\btheta$ and $\bpi$ converge:
+        \begin{enumerate}
+            \item (Expectation): For all $i\in \{1,\ldots, n\}$ and $j\in \{1,\ldots, k\}$, let:
+                \[w_j^{(i)}=\pi_j\sqrt{\det(\Sigma_j\inv)}\exp\left(-0.5(x_i-\mu_j)^T\Sigma_j\inv(x_i-\mu_j)\right)\]
+                And normalize so that $\sum_{j} w_j^{(i)}=1$ for all $i$.
+            \item (Maximization): For all $j$, set:
+                \begin{align*}
+                    n_j &= \sum_{i=1}^nw_j^{(i)};\quad 
+                    \pi_j = \frac{n_j}n;\quad 
+                    \mu_j = \frac{1}{n_j}\sum_{i=1}^nw_j^{(i)}x_i;\quad
+                    \Sigma_j  =\frac{1}{n_j}\sum_{i=1}^nw_j^{(i)}(x_i-\mu_j)(x_i-\mu_j)^T
+                \end{align*}
+        \end{enumerate}
+\end{enumerate}
+
+\paragraph{Considerations} The EM algorithm will attain a local maximum, and not necessarily a global one. The EM algorithm can also be used to obtain soft cluster assignments, in the form of the normalized weights $w_j^{(i)}$.
+
+\subsection{Joint Methods}
+There are some clustering methods which, technically, just apply a dimension-reduction method followed by a clustering method. In principle, arbitrary combinations can be used, and there's nothing to stop someone from doing e.g.~Isomap followed by Gaussian mixture. Though difficulties do arise when combining very hyperparameter-sensitive dimension-reduction methods with very hyperparameter-sensitive clustering methods.
+\subsubsection{Spectral Clustering}
+Spectral clustering, as typically used, is the following:
+\begin{enumerate}
+    \item Perform a Laplacian Eigenmap embedding of the data (\ref{sec:laplacian-eigenmaps})
+    \item Apply $k$-means to the embedded data (\ref{sec:kmeans})
+\end{enumerate}
+
+\paragraph{Considerations} As with the Laplacian Eigenmap embedding, there are many choices which will affect the output. Here our results will also be affected by what dimension $d$ we decide to embed our data in, and what $k$ we choose for the number of clusters.
+
+\printbibliography
+
+\end{document}
